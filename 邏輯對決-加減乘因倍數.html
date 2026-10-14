@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>桌迷藏 Online：數位邏輯對決 (教育特化版)</title>
+    <title>桌迷藏 Online：數位邏輯對決</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
@@ -77,6 +77,15 @@
         .my-turn { background: #dff9fb; color: #000; border: 2px solid #55efc4; }
         .opp-turn { background: #ffcccc; color: #000; border: 2px solid #ff7675; }
         
+        /* 專屬作答面板 */
+        .answer-panel { background: rgba(255,255,255,0.95); border: 2px solid var(--accent); border-radius: 12px; padding: 15px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%;}
+        .answer-panel h3 { color: var(--accent); margin: 0 0 10px 0; font-size: 16px; }
+        .answer-panel p { margin: 0 0 15px 0; font-size: 14px; color: #34495e; font-weight: bold; }
+        .answer-input { font-size: 20px; padding: 10px; width: 80%; text-align: center; border: 2px solid #bdc3c7; border-radius: 8px; margin-bottom: 15px; outline: none;}
+        .answer-input:focus { border-color: var(--accent); }
+        .answer-btn-group { display: flex; gap: 10px; justify-content: center; width: 100%; }
+        .answer-btn-group .btn { margin: 0; flex: 1; }
+
         #reconnect-overlay { position: absolute; inset: 0; background: rgba(17, 31, 55, 0.85); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: white; border-radius: 16px; backdrop-filter: blur(5px); }
         .reconnect-box { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 16px; border: 2px solid var(--accent); }
         .reconnect-box h2 { margin-top: 0; color: #f1c40f; }
@@ -174,7 +183,6 @@
         <div id="sort-error" style="color: red; text-align: center; font-weight: bold; margin-top: 10px;"></div>
     </div>
 
-    <!-- 教師專用視角區塊 -->
     <div id="teacher-section" class="container">
         <h2 class="section-title">👨‍🏫 教師上帝視角</h2>
         <p style="text-align: center; margin-bottom: 10px; font-size: 14px; color: #d35400; font-weight:bold;">
@@ -212,7 +220,6 @@
         </div>
     </div>
 
-    <!-- 玩家遊戲區塊 -->
     <div id="game-section" class="container">
         <div id="reconnect-overlay">
             <div class="reconnect-box">
@@ -248,11 +255,22 @@
                 </div>
             </div>
             
-            <div class="tracker">
+            <div id="sidebar-tracker" class="tracker">
                 <h3 style="margin-top:0; text-align:center; font-size:16px;">數位記錄紙</h3>
                 <p style="font-size:12px; text-align:center; margin:5px 0 10px; color:#71809b;">點擊切換：空白 ➔ <span style="color:red">X</span> ➔ <span style="color:green">O</span></p>
                 <div id="tracker-grid" class="tracker-grid"></div>
             </div>
+            
+            <div id="sidebar-answer" class="answer-panel">
+                <h3>⚠️ 對手發問 ⚠️</h3>
+                <p id="answer-question-text"></p>
+                <p id="answer-hint-text" style="color:var(--muted); font-size:12px;"></p>
+                <input type="text" id="answer-input-field" class="answer-input" placeholder="請輸入答案" autocomplete="off">
+                <div class="answer-btn-group">
+                    <button class="btn" onclick="submitAnswer()">送出答案</button>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -270,6 +288,9 @@
         let opponentReady = false, amIReady = false, myTurn = true;
         let revealedHostCards = [], revealedGuestCards = [];
         let qrCodeInstance = null;
+        
+        let pendingQuestionId = null;
+        let pendingBoardIdx = null;
 
         const questionPool = [
             { id: 1, text: "正數(紅色)有幾張?", calc: (c) => c.filter(x => x > 0).length },
@@ -281,7 +302,8 @@
             { id: 7, text: "右邊三張總和?", calc: (c) => c[c.length-3] + c[c.length-2] + c[c.length-1], minCards: 5 },
             { id: 8, text: "左邊兩張乘積?", calc: (c) => c[0] * c[1] },
             { id: 9, text: "右邊兩張乘積?", calc: (c) => c[c.length-2] * c[c.length-1] },
-            { id: 10, text: "數字為偶數有幾張?", calc: (c) => c.filter(x => x !== 0 && Math.abs(x) % 2 === 0).length },
+            // 將偶數的判斷包含 0
+            { id: 10, text: "數字為偶數有幾張?", calc: (c) => c.filter(x => Math.abs(x) % 2 === 0).length },
             { id: 11, text: "中位數有幾張?", calc: (c) => { const m = c[Math.floor(c.length/2)]; return c.filter(x => x === m).length; } }, 
             { id: 12, text: "Joker 0 位置在哪?", calc: (c) => {
                 let idxs = []; c.forEach((x, i) => { if(x === 0) idxs.push(i+1); });
@@ -473,7 +495,9 @@
                 case 'HOST_READY':
                     opponentReady = true; hostCards = data.sortedCards; opponentCards = hostCards;
                     checkStartGame(); break;
-                case 'ASK': handleOpponentAsk(data.qId, data.boardIdx); break;
+                case 'ASK': 
+                    showAnswerPanel(data.qId, data.boardIdx); 
+                    break;
                 case 'ANSWER':
                     if(data.penalty) {
                         alert("🎉 對方計算錯誤！被系統懲罰輪空一回合，系統已獲取正確答案。");
@@ -690,6 +714,73 @@
             }
         }
 
+        function showAnswerPanel(qId, boardIdx) {
+            const qObj = questionPool.find(q=>q.id === qId);
+            pendingQuestionId = qId;
+            pendingBoardIdx = boardIdx;
+            
+            document.getElementById('answer-question-text').innerText = `「${qObj.text}」`;
+            if (qId === 12) {
+                document.getElementById('answer-hint-text').innerText = "若存在請輸入數字 (多張用逗號隔開)；若不存在請輸入 N";
+            } else {
+                document.getElementById('answer-hint-text').innerText = "只要填入數字即可：";
+            }
+            
+            document.getElementById('answer-input-field').value = '';
+            
+            document.getElementById('sidebar-tracker').style.display = 'none';
+            document.getElementById('sidebar-answer').style.display = 'flex';
+            
+            setTimeout(() => { document.getElementById('answer-input-field').focus(); }, 100);
+        }
+
+        function submitAnswer() {
+            if (pendingQuestionId === null) return;
+            
+            const qObj = questionPool.find(q=>q.id === pendingQuestionId);
+            const correctAns = qObj.calc(myCards);
+            let penaltyApplied = false;
+
+            let input = document.getElementById('answer-input-field').value;
+            if (input === null || input.trim() === '') {
+                alert("請輸入答案！");
+                return; 
+            }
+            
+            let cleanInput = input.trim().toUpperCase();
+            let isCorrect = false;
+
+            if (qObj.id === 12) {
+                cleanInput = cleanInput.replace(/，/g, ',').replace(/\s+/g, ',').replace(/,+/g, ',');
+                isCorrect = (cleanInput === correctAns.toString().toUpperCase());
+            } else {
+                cleanInput = cleanInput.replace(/\s+/g, '');
+                isCorrect = (parseInt(cleanInput, 10) === correctAns);
+            }
+
+            if (!isCorrect) {
+                alert(`❌ 算錯囉！懲罰輪空一回合！\n正確答案是「${correctAns}」，系統已自動幫您發送。`);
+                penaltyApplied = true;
+            } else { alert("✅ 答案正確！已發送給對手。"); }
+
+            addHistoryLog(qObj.text, correctAns, false, true);
+            let newQ = getRandomQuestions(1, currentBoardQuestions.map(q=>q.id))[0];
+            currentBoardQuestions[pendingBoardIdx] = newQ; renderQuestionBoard();
+
+            if(conn && conn.open) {
+                conn.send({ type: 'ANSWER', boardIdx: pendingBoardIdx, qText: qObj.text, ansText: correctAns, newQId: newQ.id, penalty: penaltyApplied });
+            }
+            
+            document.getElementById('sidebar-answer').style.display = 'none';
+            document.getElementById('sidebar-tracker').style.display = 'block';
+            
+            pendingQuestionId = null;
+            pendingBoardIdx = null;
+
+            if(!penaltyApplied) { myTurn = true; updateTurnUI(); } 
+            else { myTurn = false; updateTurnUI(); }
+        }
+
         function onQuestionClick(qObj, boardIdx) {
             if(!myTurn) return;
             myTurn = false; updateTurnUI();
@@ -712,45 +803,7 @@
             let boardIdx = availableIdx[Math.floor(Math.random() * availableIdx.length)];
             let qId = currentBoardQuestions[boardIdx].id;
             document.getElementById('turn-indicator').innerText = "⏳ AI 正在思考並發問...";
-            setTimeout(() => { handleOpponentAsk(qId, boardIdx, true); }, 1500);
-        }
-
-        function handleOpponentAsk(qId, boardIdx, isFromAI = false) {
-            const qObj = questionPool.find(q=>q.id === qId);
-            const correctAns = qObj.calc(myCards);
-            let penaltyApplied = false;
-
-            let promptMsg = `⚠️ 對手發問：「${qObj.text}」\n`;
-            if (qObj.id === 12) promptMsg += `👉 如果存在，請輸入數字 (多張請用逗號或空格隔開)\n👉 當「不存在」時，請輸入「N」：`;
-            else promptMsg += `👉 只要填入數字即可：`;
-
-            let input = prompt(promptMsg);
-            if (input === null) input = "";
-            let cleanInput = input.trim().toUpperCase();
-            let isCorrect = false;
-
-            if (qObj.id === 12) {
-                cleanInput = cleanInput.replace(/，/g, ',').replace(/\s+/g, ',').replace(/,+/g, ',');
-                isCorrect = (cleanInput === correctAns.toString().toUpperCase());
-            } else {
-                cleanInput = cleanInput.replace(/\s+/g, '');
-                isCorrect = (parseInt(cleanInput, 10) === correctAns);
-            }
-
-            if (!isCorrect) {
-                alert(`❌ 算錯囉！懲罰輪空一回合！\n正確答案是「${correctAns}」，系統已自動幫您發送。`);
-                penaltyApplied = true;
-            } else { alert("✅ 答案正確！已發送給對手。"); }
-
-            addHistoryLog(qObj.text, correctAns, false, true);
-            let newQ = getRandomQuestions(1, currentBoardQuestions.map(q=>q.id))[0];
-            currentBoardQuestions[boardIdx] = newQ; renderQuestionBoard();
-
-            if(!isFromAI && conn && conn.open) {
-                conn.send({ type: 'ANSWER', boardIdx: boardIdx, qText: qObj.text, ansText: correctAns, newQId: newQ.id, penalty: penaltyApplied });
-            }
-            if(!penaltyApplied) { myTurn = true; updateTurnUI(); } 
-            else { myTurn = false; updateTurnUI(); if(isFromAI || isAITakeover) setTimeout(aiPlayTurn, 1500); }
+            setTimeout(() => { showAnswerPanel(qId, boardIdx); }, 1500);
         }
 
         function addHistoryLog(question, answer, isMeAsking, syncToArray = true) {
@@ -865,9 +918,16 @@
                 if(oppCardEl && oppRevealFlags[i]) {
                     oppCardEl.classList.remove('hidden'); oppCardEl.classList.add('revealed-by-teacher');
                     oppCardEl.textContent = opponentCards[i];
-                    if (opponentCards[i] > 0) oppCardEl.classList.add('red');
-                    else if (opponentCards[i] < 0) oppCardEl.classList.add('black');
-                    else oppCardEl.classList.add('zero');
+                    if (opponentCards[i] > 0) {
+                        oppCardEl.classList.add('red');
+                        oppCardEl.classList.remove('black', 'zero');
+                    } else if (opponentCards[i] < 0) {
+                        oppCardEl.classList.add('black');
+                        oppCardEl.classList.remove('red', 'zero');
+                    } else {
+                        oppCardEl.classList.add('zero');
+                        oppCardEl.classList.remove('red', 'black');
+                    }
                 } else if(oppCardEl && !oppRevealFlags[i]) {
                     oppCardEl.classList.add('hidden'); oppCardEl.classList.remove('revealed-by-teacher');
                     oppCardEl.textContent = '';
