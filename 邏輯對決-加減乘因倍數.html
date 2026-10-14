@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>桌迷藏 Online：數位邏輯對決</title>
+    <title>桌迷藏 Online：數位邏輯對決 (教育特化版)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
@@ -150,7 +150,7 @@
             </div>
         </div>
 
-        <!-- 教師連線大廳 (分為：教師開房 vs 教師觀戰) -->
+        <!-- 教師連線大廳 -->
         <div class="menu-grid" id="teacher-lobby-grid" style="display:none;">
             <div class="lobby-box">
                 <h3>我是教師 (發起上帝視角戰局)</h3>
@@ -192,7 +192,7 @@
     <!-- P2P模式：Host 設定難度區 -->
     <div id="mode-section" class="container">
         <h2 class="section-title">請選擇遊戲難度</h2>
-        <p style="text-align: center; color: #7f8c8d; margin-bottom: 20px;">發起人請決定這局的難度配置</p>
+        <p style="text-align: center; color: #7f8c8d; margin-bottom: 20px;">請決定這局的難度配置</p>
         <div class="menu-grid">
             <button class="mode-btn btn-teaching" onclick="initDeckAndDistribute('teaching')">🟣 教學版 (3張牌，-3 到 3)</button>
             <button class="mode-btn btn-simple" onclick="initDeckAndDistribute('simple')">🟢 簡單版 (5張牌，-5 到 5)</button>
@@ -248,7 +248,6 @@
 
     <!-- 玩家遊戲區塊 -->
     <div id="game-section" class="container">
-        <!-- 斷線重連遮罩 -->
         <div id="reconnect-overlay">
             <div class="reconnect-box">
                 <div class="loader" style="border-top-color: #f1c40f;"></div>
@@ -293,7 +292,7 @@
                 <h3>⚠️ 對手發問 ⚠️</h3>
                 <p id="answer-question-text"></p>
                 <p id="answer-hint-text" style="color:var(--muted); font-size:12px;"></p>
-                <input type="text" id="answer-input-field" class="answer-input" placeholder="請輸入答案" autocomplete="off">
+                <input type="text" id="answer-input-field" class="answer-input" placeholder="請輸入答案" autocomplete="off" onkeydown="if(event.key==='Enter') submitAnswer()">
                 <div class="answer-btn-group">
                     <button class="btn" onclick="submitAnswer()">送出答案</button>
                 </div>
@@ -305,13 +304,13 @@
         const PEER_PREFIX = 'swjh-math-v4-';
         let peer = null, conn = null; 
         
-        // --- 狀態變數 ---
         let isHost = false, isPvP = false, isSpectator = false, isAITakeover = false;
         let isTeacherHost = false, isConnectedToTeacherHost = false; 
         let connP1 = null, connP2 = null; 
         let teacherHostTurn = true; 
         let spectators = [];
         let isGameStarted = false, currentRoomId = '', reconnectInterval = null;
+        let aiTimeout = null;
         
         let BASE_NUMBERS = [], hostCards = [], guestCards = [];
         let myCards = [], opponentCards = []; 
@@ -416,7 +415,6 @@
             }, 3000);
         }
 
-        // ====== 一般玩家開房 ======
         function createRoom() {
             isHost = true; isTeacherHost = false;
             currentRoomId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -461,7 +459,6 @@
             else { qrCodeInstance = new QRCode(document.getElementById("qrcode"), { text: url, width: 150, height: 150, colorDark : "#15233d", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H }); }
         }
 
-        // ====== 教師作為主機開房 ======
         function createTeacherRoom() {
             isTeacherHost = true; isSpectator = true; isHost = false;
             currentRoomId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -472,7 +469,7 @@
             peer = new Peer(PEER_PREFIX + currentRoomId);
             peer.on('error', (err) => alert('連線發生錯誤: ' + err.type));
             peer.on('connection', (c) => {
-                if (c.metadata && c.metadata.role === 'spectator') return; // ignore other spectators in this mode
+                if (c.metadata && c.metadata.role === 'spectator') return;
                 
                 if (!connP1 || !connP1.open) {
                     connP1 = c;
@@ -511,7 +508,6 @@
             else { qrCodeInstanceTeacher = new QRCode(document.getElementById("teacher-qrcode"), { text: url, width: 150, height: 150, colorDark : "#15233d", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H }); }
         }
 
-        // ====== 學生/觀戰加入 ======
         function joinRoom(role) {
             isHost = false;
             if (role === 'spectator') {
@@ -543,7 +539,6 @@
             });
         }
 
-        // --- 教師作為主機時的中繼處理邏輯 ---
         function handleDataAsTeacherHost(senderConn, data) {
             let receiverConn = (senderConn === connP1) ? connP2 : connP1;
 
@@ -582,7 +577,19 @@
             list.insertBefore(li, list.firstChild);
         }
 
-        // ====== 網路封包處理 ======
+        function setupConnEvents() {
+            conn.on('open', () => {
+                if(isHost) { if(!isGameStarted) switchScreen('mode-section'); } 
+                else {
+                    document.getElementById('join-wait-area').innerHTML = "✅ 連線成功！<br>等待發起人決定難度與發牌...";
+                    document.getElementById('join-wait-area').style.color = "#27ae60";
+                }
+            });
+            conn.on('data', handleNetworkData);
+            conn.on('close', handleDisconnect);
+            conn.on('error', handleDisconnect);
+        }
+
         function handleNetworkData(data) {
             switch(data.type) {
                 case 'TEACHER_ACK':
@@ -612,6 +619,8 @@
                     currentBoardQuestions = data.questions.map(id => questionPool.find(q=>q.id===id));
                     historyData = data.history; 
                     myTurn = isHost ? data.hostTurn : !data.hostTurn;
+                    
+                    if (aiTimeout) { clearTimeout(aiTimeout); aiTimeout = null; }
                     
                     hideReconnectOverlay(); switchScreen('game-section'); renderOpponentCards();
                     const mc = document.getElementById('player-game-cards');
@@ -643,18 +652,24 @@
                 case 'READY': 
                     opponentReady = true; guestCards = data.sortedCards; opponentCards = guestCards;
                     if (isHost && !isTeacherHost) broadcastToSpectators({ type: 'UPDATE_CARDS', target: 'guest', cards: guestCards });
+                    myTurn = true; 
                     checkStartGame(); break;
                 case 'HOST_READY':
                     opponentReady = true; hostCards = data.sortedCards; opponentCards = hostCards;
+                    myTurn = false; 
                     checkStartGame(); break;
                 case 'ASK': 
                     showAnswerPanel(data.qId, data.boardIdx); 
                     break;
                 case 'ANSWER':
+                    // 如果對方算錯 (penalty)，對方輪空，所以我方繼續發問 (myTurn = true)
+                    // 如果對方算對，換對方發問，我方等待 (myTurn = false)
                     if(data.penalty) {
-                        alert("🎉 對方計算錯誤！被系統懲罰輪空一回合，系統已獲取正確答案。");
+                        alert("🎉 對方計算錯誤！被系統懲罰輪空一回合，系統已獲取正確答案。輪到你繼續發問！");
                         myTurn = true;
-                    } else { myTurn = false; }
+                    } else { 
+                        myTurn = false; 
+                    }
                     addHistoryLog(data.qText, data.ansText, true, true);
                     currentBoardQuestions[data.boardIdx] = questionPool.find(q=>q.id===data.newQId);
                     renderQuestionBoard(); updateTurnUI();
@@ -665,7 +680,11 @@
                     myCards = guestCards; opponentCards = hostCards;
                     revealedHostCards = data.revealedHostCards; revealedGuestCards = data.revealedGuestCards;
                     currentBoardQuestions = data.questions.map(id => questionPool.find(q=>q.id===id));
-                    historyData = data.history; myTurn = !data.hostTurn; isGameStarted = true;
+                    historyData = data.history; 
+                    myTurn = !data.hostTurn; 
+                    isGameStarted = true;
+                    
+                    if (aiTimeout) { clearTimeout(aiTimeout); aiTimeout = null; }
                     
                     hideReconnectOverlay(); switchScreen('game-section'); renderOpponentCards();
                     const myContainer = document.getElementById('player-game-cards');
@@ -830,7 +849,9 @@
                 myContainer.appendChild(c);
             });
             renderTracker(); renderQuestionBoard();
-            myTurn = isHost ? true : false; if(!isPvP) myTurn = true; 
+            
+            if (!isPvP) { myTurn = true; }
+            
             updateTurnUI(); syncRevealCardsUI();
         }
 
@@ -932,8 +953,20 @@
             
             pendingQuestionId = null; pendingBoardIdx = null;
 
-            if(!penaltyApplied) { myTurn = true; updateTurnUI(); } 
-            else { myTurn = false; updateTurnUI(); }
+            // 回答正確：對手回合結束，換我發問
+            if (!penaltyApplied) {
+                myTurn = true; 
+                updateTurnUI(); 
+            } else {
+                // 回答錯誤：我被懲罰輪空一回合，換對手繼續發問！
+                myTurn = false; 
+                updateTurnUI(); 
+                // 若為單機練習或AI接管，必須立即排程由AI接續出題發問！
+                if (!isPvP || isAITakeover) {
+                    if (aiTimeout) clearTimeout(aiTimeout);
+                    aiTimeout = setTimeout(aiPlayTurn, 1500);
+                }
+            }
         }
 
         function onQuestionClick(qObj, boardIdx) {
@@ -945,7 +978,9 @@
                 addHistoryLog(qObj.text, ans, true, true);
                 let newQ = getRandomQuestions(1, currentBoardQuestions.map(q=>q.id))[0];
                 currentBoardQuestions[boardIdx] = newQ; renderQuestionBoard();
-                setTimeout(aiPlayTurn, 1500);
+                
+                if (aiTimeout) clearTimeout(aiTimeout);
+                aiTimeout = setTimeout(aiPlayTurn, 1500);
             } else {
                 document.getElementById('turn-indicator').innerText = "⏳ 等待對手計算答案中...";
                 conn.send({ type: 'ASK', qId: qObj.id, boardIdx: boardIdx });
@@ -958,7 +993,9 @@
             let boardIdx = availableIdx[Math.floor(Math.random() * availableIdx.length)];
             let qId = currentBoardQuestions[boardIdx].id;
             document.getElementById('turn-indicator').innerText = "⏳ AI 正在思考並發問...";
-            setTimeout(() => { showAnswerPanel(qId, boardIdx); }, 1500);
+            
+            if (aiTimeout) clearTimeout(aiTimeout);
+            aiTimeout = setTimeout(() => { showAnswerPanel(qId, boardIdx); }, 1500);
         }
 
         function addHistoryLog(question, answer, isMeAsking, syncToArray = true) {
@@ -1048,7 +1085,7 @@
                         if(connP1 && connP1.open) connP1.send(revealData);
                         if(connP2 && connP2.open) connP2.send(revealData);
                         renderTeacherBoard();
-                    } else {
+                    } else if (conn && conn.open) {
                         revealedHostCards[idx] = !revealedHostCards[idx];
                         conn.send({ type: 'TEACHER_REVEAL', target: 'host', index: idx, state: revealedHostCards[idx] });
                         renderTeacherBoard(); 
@@ -1072,7 +1109,7 @@
                         if(connP1 && connP1.open) connP1.send(revealData);
                         if(connP2 && connP2.open) connP2.send(revealData);
                         renderTeacherBoard();
-                    } else {
+                    } else if (conn && conn.open) {
                         revealedGuestCards[idx] = !revealedGuestCards[idx];
                         conn.send({ type: 'TEACHER_REVEAL', target: 'guest', index: idx, state: revealedGuestCards[idx] });
                         renderTeacherBoard(); 
