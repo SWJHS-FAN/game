@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>因倍數與質數賓果大戰 | 國中數學互動學習平台</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti CDN -->
+    <script src="https://jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .grid-tile {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .grid-tile:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4);
+        }
+        @keyframes pulse-red {
+            0%, 100% { border-color: rgba(239, 68, 68, 1); background-color: rgba(239, 68, 68, 0.2); }
+            50% { border-color: rgba(239, 68, 68, 0.4); background-color: rgba(30, 41, 59, 0.8); }
+        }
+        .penalty-active {
+            animation: pulse-red 1.2s infinite;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8 flex flex-col items-center justify-start min-h-screen">
+
+    <!-- 主容器 -->
+    <div class="w-full max-w-7xl mx-auto flex flex-col gap-6">
+
+        <!-- 頂部標題列 -->
+        <header class="glass-panel rounded-2xl p-6 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 text-2xl font-black text-white">
+                    <i class="fa-solid fa-calculator"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl sm:text-3xl font-black tracking-wide bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent">
+                        因倍數與質數賓果大戰
+                    </h1>
+                    <p class="text-sm text-slate-400 mt-1">智慧出題防死局系統（支援 2,3,4,5,9,11,25 與 100以內質數）</p>
+                </div>
+            </div>
+            <div id="game-status-badge" class="hidden items-center gap-3 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700">
+                <span class="inline-block w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
+                <span id="current-mode-label" class="text-sm font-bold text-slate-200">單機闖關模式</span>
+                <button onclick="returnToMenu()" class="ml-2 text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-slate-300 transition">返回主選單</button>
+            </div>
+        </header>
+
+        <!-- 畫面 1：主選單 -->
+        <section id="view-menu" class="glass-panel rounded-2xl p-8 shadow-2xl flex flex-col gap-8">
+            <div class="text-center max-w-2xl mx-auto">
+                <h2 class="text-xl sm:text-2xl font-bold text-indigo-200 mb-2">選擇您的遊戲模式</h2>
+                <p class="text-slate-400 text-sm">支援單機闖關，或透過「房間代碼」建立多人連線對戰，教師端更可開啟上帝視角即時監控全班！</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full">
+                <!-- 1. 單機模式卡片 -->
+                <div onclick="openSetupModal('solo')" class="glass-panel rounded-2xl p-6 border border-indigo-500/30 hover:border-indigo-400 cursor-pointer transition transform hover:-translate-y-1 bg-gradient-to-b from-indigo-950/40 to-slate-900/60 flex flex-col justify-between group">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400 text-xl mb-4 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-user-robot"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">【單機挑戰模式】</h3>
+                        <p class="text-slate-400 text-sm mb-4">系統動態出題，每次抽出的性質保證盤面上至少有一個未圈選的合法數字。挑戰最速 3 條線！</p>
+                    </div>
+                    <div class="flex items-center text-indigo-400 font-bold text-sm">
+                        開始挑戰 <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition"></i>
+                    </div>
+                </div>
+
+                <!-- 2. 教師開房卡片 -->
+                <div onclick="openSetupModal('teacher')" class="glass-panel rounded-2xl p-6 border border-purple-500/30 hover:border-purple-400 cursor-pointer transition transform hover:-translate-y-1 bg-gradient-to-b from-purple-950/40 to-slate-900/60 flex flex-col justify-between group">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-purple-600/30 border border-purple-500/50 flex items-center justify-center text-purple-400 text-xl mb-4 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-chalkboard-user"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">【教師開立房間】</h3>
+                        <p class="text-slate-400 text-sm mb-4">建立專屬房間代碼，擔任主考官統一派題。啟用「上帝視角儀表板」即時檢視全班學生棋盤縮圖與答題狀態。</p>
+                    </div>
+                    <div class="flex items-center text-purple-400 font-bold text-sm">
+                        建立房間 <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition"></i>
+                    </div>
+                </div>
+
+                <!-- 3. 學生加入房間卡片 -->
+                <div onclick="openSetupModal('student')" class="glass-panel rounded-2xl p-6 border border-pink-500/30 hover:border-pink-400 cursor-pointer transition transform hover:-translate-y-1 bg-gradient-to-b from-pink-950/40 to-slate-900/60 flex flex-col justify-between group">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-pink-600/30 border border-pink-500/50 flex items-center justify-center text-pink-400 text-xl mb-4 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">【學生加入連線】</h3>
+                        <p class="text-slate-400 text-sm mb-4">輸入老師提供的房間代碼與您的座號姓名，即刻加入線上即時對戰，與同學一同競速賓果！</p>
+                    </div>
+                    <div class="flex items-center text-pink-400 font-bold text-sm">
+                        加入房間 <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 規則說明區 -->
+            <div class="bg-slate-900/50 rounded-xl p-6 border border-slate-800 text-sm text-slate-300">
+                <h4 class="font-bold text-indigo-300 mb-2 flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> 智慧防死局與連線說明</h4>
+                <ul class="list-disc list-inside space-y-1 text-slate-400">
+                    <li><b>防死局機制</b>：系統與教師出題時自動掃描<b>尚未圈選</b>的格子，保證每題皆有解。</li>
+                    <li><b>即時對戰</b>：透過多視窗或多設備的廣播頻道連線，教師端可完整掌控全班答題動態與錯題統計。</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 遊戲設定彈跳視窗 (Modal) -->
+        <section id="modal-setup" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div class="glass-panel rounded-3xl p-6 sm:p-8 max-w-md w-full border border-indigo-500/40 shadow-2xl flex flex-col gap-4">
+                <h3 id="setup-modal-title" class="text-xl font-bold text-white">遊戲設定</h3>
+                <div id="setup-form-content" class="space-y-4">
+                    <!-- 動態表單 -->
+                </div>
+                <div class="flex gap-3 mt-4">
+                    <button onclick="confirmSetup()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition text-sm shadow-lg shadow-indigo-600/30">
+                        確認進入
+                    </button>
+                    <button onclick="closeSetupModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 px-4 rounded-xl transition text-sm border border-slate-700">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 畫面 2：遊戲進行中介面 (學生/單機) -->
+        <section id="view-game" class="hidden flex flex-col lg:flex-row gap-6">
+            <!-- 左側：遊戲控制與目標狀態 -->
+            <div class="w-full lg:w-1/3 flex flex-col gap-6">
+                <!-- 當前任務卡片 -->
+                <div class="glass-panel rounded-2xl p-6 shadow-xl border-indigo-500/30">
+                    <div class="text-xs uppercase tracking-wider text-indigo-400 font-bold mb-1">Current Task / 當前回合任務</div>
+                    <div id="target-condition-box" class="bg-indigo-950/60 border border-indigo-500/40 rounded-xl p-4 my-3 text-center">
+                        <div id="target-rule-title" class="text-lg font-black text-white">等待老師派題...</div>
+                        <div id="target-rule-desc" class="text-xs text-indigo-200 mt-1">請在右側 5×5 盤面中點選符合條件的數字</div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between mt-4 pt-4 border-t border-slate-700/60 text-sm">
+                        <span class="text-slate-400">連線進度 (目標 3 條) :</span>
+                        <span id="bingo-lines-count" class="font-black text-indigo-400 text-lg">0 / 3 條</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2.5 rounded-full mt-2 overflow-hidden border border-slate-700">
+                        <div id="bingo-progress-bar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full w-0 transition-all duration-500"></div>
+                    </div>
+
+                    <!-- 懲罰狀態提示 -->
+                    <div id="penalty-status-box" class="hidden mt-4 p-3 rounded-xl bg-red-950/60 border border-red-500/50 text-red-200 text-xs font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-red-400 text-base"></i>
+                        <span id="penalty-text">懲罰中：您因上一題點錯，本回合停權一次！</span>
+                    </div>
+
+                    <div class="flex gap-2 mt-4" id="pass-btn-container">
+                        <button onclick="requestPass()" id="next-round-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-3 rounded-xl shadow-lg shadow-indigo-600/30 transition text-xs flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-rotate"></i> 換一題 (Pass)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 即時錯題日誌摘要 -->
+                <div class="glass-panel rounded-2xl p-6 shadow-xl">
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-bold mb-2">即時錯題紀錄 (Error Feed)</div>
+                    <div id="error-feed-list" class="space-y-2 max-h-36 overflow-y-auto text-xs text-slate-400 pr-1">
+                        <div class="text-slate-500 italic">目前尚無錯題紀錄，繼續保持！</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側：5x5 賓果盤 -->
+            <div class="w-full lg:w-2/3 glass-panel rounded-2xl p-6 shadow-xl flex flex-col items-center justify-center">
+                <div class="w-full flex items-center justify-between mb-4 px-2">
+                    <span class="text-sm font-bold text-slate-300"><i class="fa-solid fa-table-cells text-indigo-400 mr-2"></i> <span id="player-board-title">您的 5×5 智能賓果盤</span></span>
+                    <span id="room-code-tag" class="text-xs bg-indigo-900/60 text-indigo-300 px-3 py-1 rounded-lg border border-indigo-500/40 font-bold">單機模式</span>
+                </div>
+
+                <!-- 5x5 網格容器 -->
+                <div id="bingo-grid" class="grid grid-cols-5 gap-2 sm:gap-3 w-full max-w-lg aspect-square">
+                    <!-- 動態生成 25 格 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 畫面 3：教師上帝視角儀表板 (Teacher Dashboard) -->
+        <section id="view-teacher-dashboard" class="hidden flex flex-col gap-6">
+            <!-- 老師控制台上方導覽 -->
+            <div class="glass-panel rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-3">
+                        <span class="bg-purple-600/30 border border-purple-500/50 text-purple-300 text-xs px-3 py-1 rounded-lg font-bold">教師控制中樞</span>
+                        <h2 class="text-xl font-bold text-white">房間代碼：<span id="dash-room-code" class="text-purple-300 tracking-wider">MATH888</span></h2>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">即時掌握全班學生盤面狀態、連線進度與錯題警示</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="teacherBroadcastNewTask()" class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 text-xs flex items-center gap-2">
+                        <i class="fa-solid fa-dice"></i> 抽籤並派發下一題
+                    </button>
+                    <button onclick="endTeacherRoom()" class="bg-red-600/80 hover:bg-red-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition">
+                        結束房間
+                    </button>
+                </div>
+            </div>
+
+            <!-- 教師端當前派題資訊 -->
+            <div class="glass-panel rounded-xl p-4 border border-purple-500/30 flex items-center justify-between">
+                <div>
+                    <span class="text-xs text-purple-400 font-bold">目前全班進行中的統一考題：</span>
+                    <div id="dash-current-task" class="text-base font-black text-white mt-0.5">尚未派題，請點擊上方按鈕開始！</div>
+                </div>
+                <div class="text-right text-xs text-slate-400">
+                    連線學生人數：<span id="dash-student-count" class="font-bold text-indigo-300 text-sm">0</span> 人
+                </div>
+            </div>
+
+            <!-- 全班學生縮圖矩陣 (Bento Grid) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" id="teacher-students-matrix">
+                <!-- 動態插入學生小卡 -->
+            </div>
+        </section>
+
+        <!-- 畫面 4：賽後錯題檢討報告 Modal -->
+        <section id="view-review" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div class="glass-panel rounded-3xl p-6 sm:p-8 max-w-2xl w-full border border-indigo-500/40 shadow-2xl flex flex-col max-h-[90vh]">
+                <div class="text-center mb-6">
+                    <div id="review-result-icon" class="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 mx-auto flex items-center justify-center text-emerald-400 text-3xl mb-3 shadow-lg shadow-emerald-500/20">
+                        <i class="fa-solid fa-trophy"></i>
+                    </div>
+                    <h2 id="review-title" class="text-2xl font-black text-white">恭喜達成賓果連線！</h2>
+                    <p id="review-subtitle" class="text-sm text-slate-400 mt-1">以下是您本次對局的錯題檢討與學習報告</p>
+                </div>
+
+                <div class="flex-1 overflow-y-auto space-y-4 pr-2">
+                    <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800">
+                        <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">對局數據統計</h4>
+                        <div class="grid grid-cols-3 gap-4 text-center">
+                            <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                                <div class="text-slate-400 text-xs">總點擊次數</div>
+                                <div id="stat-total-clicks" class="text-xl font-black text-white mt-1">0</div>
+                            </div>
+                            <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                                <div class="text-slate-400 text-xs">踩雷錯誤數</div>
+                                <div id="stat-total-errors" class="text-xl font-black text-red-400 mt-1">0</div>
+                            </div>
+                            <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                                <div class="text-slate-400 text-xs">達成連線</div>
+                                <div id="stat-total-lines" class="text-xl font-black text-emerald-400 mt-1">3 條</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900/60 rounded-xl p-4 border border-slate-800">
+                        <h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-3">錯題健檢與判別法複習</h4>
+                        <div id="error-review-container" class="space-y-3">
+                            <!-- 動態插入錯題解析 -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-slate-800 flex gap-3">
+                    <button onclick="restartGame()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-rotate-right"></i> 再次挑戰新局
+                    </button>
+                    <button onclick="returnToMenu()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 px-4 rounded-xl transition text-sm border border-slate-700">
+                        返回主選單
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 自定義彈出訊息提示框 -->
+        <div id="custom-toast" class="hidden fixed bottom-6 right-6 z-50 max-w-md w-full glass-panel border border-red-500/60 rounded-2xl p-4 shadow-2xl bg-slate-950/90 transform translate-y-20 opacity-0 transition-all duration-300 flex items-start gap-3">
+            <div id="toast-icon" class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 text-lg shrink-0">
+                <i class="fa-solid fa-circle-exclamation"></i>
+            </div>
+            <div class="flex-1">
+                <h4 id="toast-title" class="font-bold text-white text-sm">點選錯誤！</h4>
+                <p id="toast-msg" class="text-xs text-slate-300 mt-0.5">提示訊息...</p>
+            </div>
+            <button onclick="hideToast()" class="text-slate-400 hover:text-white text-sm"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+    </div>
+
+    <!-- JavaScript 遊戲核心與 BroadcastChannel 聯網邏輯 -->
+    <script>
+        // ==========================================
+        // 1. 數學判別法與母體常數定義
+        // ==========================================
+        const PRIMES_UNDER_100 = [
+            2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 
+            31, 37, 41, 43, 47, 53, 59, 61, 67, 
+            71, 73, 79, 83, 89, 97
+        ];
+
+        const TARGET_RULES = [
+            { id: 'multiple_2', name: '2 的倍數', desc: '末位數字為偶數 (0, 2, 4, 6, 8)', check: n => n % 2 === 0 },
+            { id: 'multiple_3', name: '3 的倍數', desc: '各數位數字總和是 3 的倍數', check: n => { let s = String(n).split('').reduce((a,b)=>a+Number(b),0); return s % 3 === 0; } },
+            { id: 'multiple_4', name: '4 的倍數', desc: '末兩位數字形成的數是 4 的倍數', check: n => n % 4 === 0 },
+            { id: 'multiple_5', name: '5 的倍數', desc: '末位數字為 0 或 5', check: n => n % 5 === 0 },
+            { id: 'multiple_9', name: '9 的倍數', desc: '各數位數字總和是 9 的倍數', check: n => { let s = String(n).split('').reduce((a,b)=>a+Number(b),0); return s % 9 === 0; } },
+            { id: 'multiple_11', name: '11 的倍數', desc: '奇數位與偶數位數字和的差為 0 或 11 的倍數', check: n => {
+                let s = String(n);
+                let oddSum = 0, evenSum = 0;
+                for(let i=0; i<s.length; i++) {
+                    if(i % 2 === 0) oddSum += Number(s[i]);
+                    else evenSum += Number(s[i]);
+                }
+                return Math.abs(oddSum - evenSum) % 11 === 0;
+            }},
+            { id: 'multiple_25', name: '25 的倍數', desc: '末兩位數字為 00, 25, 50, 75', check: n => n % 25 === 0 },
+            { id: 'prime_100', name: '100 以內的質數', desc: '只能被 1 和自己整除的正整數', check: n => n <= 100 && PRIMES_UNDER_100.includes(n) }
+        ];
+
+        function getNumberProperties(n) {
+            let matched = [];
+            TARGET_RULES.forEach(rule => {
+                if(rule.check(n)) matched.push(rule.id);
+            });
+            return matched;
+        }
+
+        // ==========================================
+        // 2. 建立全域合法數字母體與分層均勻抽樣
+        // ==========================================
+        let masterPool = [];
+        function initMasterPool() {
+            if(masterPool.length > 0) return;
+            for(let i = 1; i <= 1000; i++) {
+                let props = getNumberProperties(i);
+                if(props.length > 0) {
+                    masterPool.push({ value: i, properties: props });
+                }
+            }
+        }
+
+        function generateBalancedBoard() {
+            initMasterPool();
+            let boardValues = [];
+            let usedValues = new Set();
+
+            function pickSub(filterFn, count) {
+                let sub = masterPool.filter(item => filterFn(item) && !usedValues.has(item.value));
+                sub.sort(() => Math.random() - 0.5);
+                let res = [];
+                for(let i=0; i<Math.min(count, sub.length); i++) {
+                    res.push(sub[i].value);
+                    usedValues.add(sub[i].value);
+                }
+                return res;
+            }
+
+            let primes = pickSub(item => item.properties.includes('prime_100'), 3);
+            let m11 = pickSub(item => item.properties.includes('multiple_11'), 3);
+            let m25 = pickSub(item => item.properties.includes('multiple_25'), 3);
+            let m9 = pickSub(item => item.properties.includes('multiple_9'), 3);
+
+            boardValues.push(...primes, ...m11, ...m25, ...m9);
+
+            let remaining = 25 - boardValues.length;
+            let general = masterPool.filter(item => !usedValues.has(item.value));
+            general.sort(() => Math.random() - 0.5);
+
+            for(let i=0; i<remaining && i<general.length; i++) {
+                boardValues.push(general[i].value);
+                usedValues.add(general[i].value);
+            }
+
+            boardValues.sort(() => Math.random() - 0.5);
+
+            let grid = [];
+            for(let r=0; r<5; r++) {
+                let row = [];
+                for(let c=0; c<5; c++) {
+                    let val = boardValues[r*5 + c];
+                    row.push({
+                        value: val,
+                        marked: false,
+                        properties: getNumberProperties(val)
+                    });
+                }
+                grid.push(row);
+            }
+            return grid;
+        }
+
+        // ==========================================
+        // 3. 遊戲全域狀態與 BroadcastChannel 聯網
+        // ==========================================
+        let gameState = {
+            mode: 'solo', // 'solo', 'teacher', 'student'
+            roomCode: '',
+            playerName: '',
+            board: [],
+            currentRule: null,
+            isPunished: false,
+            totalClicks: 0,
+            totalErrors: 0,
+            errorLogs: []
+        };
+
+        let activeChannel = null;
+        let teacherRoomData = {
+            students: {} // socketId/clientId -> studentObj
+        };
+
+        function setupBroadcastChannel(room) {
+            if(activeChannel) activeChannel.close();
+            activeChannel = new BroadcastChannel(`bingo_math_room_${room}`);
+
+            activeChannel.onmessage = (event) => {
+                let msg = event.data;
+                if(!msg) return;
+
+                if(gameState.mode === 'student') {
+                    if(msg.type === 'NEW_TASK') {
+                        gameState.currentRule = msg.rule;
+                        document.getElementById('target-rule-title').innerText = `🎯 請找出：【${gameState.currentRule.name}】`;
+                        document.getElementById('target-rule-desc').innerText = `防死局判別條件：${gameState.currentRule.desc}`;
+                    } else if(msg.type === 'ROOM_CLOSED') {
+                        showToast("房間已關閉", "主考官教師已關閉此房間。", "error");
+                        returnToMenu();
+                    }
+                } else if(gameState.mode === 'teacher') {
+                    if(msg.type === 'STUDENT_SYNC') {
+                        teacherRoomData.students[msg.clientId] = msg.data;
+                        updateTeacherDashboardUI();
+                    }
+                }
+            };
+        }
+
+        // ==========================================
+        // 4. 設定 Modal 控制與模式啟動
+        // ==========================================
+        let currentSetupType = 'solo';
+
+        function openSetupModal(type) {
+            currentSetupType = type;
+            let modal = document.getElementById('modal-setup');
+            let title = document.getElementById('setup-modal-title');
+            let content = document.getElementById('setup-form-content');
+
+            modal.classList.remove('hidden');
+            content.innerHTML = '';
+
+            if(type === 'solo') {
+                title.innerText = '【單機挑戰模式設定】';
+                content.innerHTML = `
+                    <p class="text-sm text-slate-300">您將進行單人防死局智慧闖關，挑戰最速 3 條線！</p>
+                `;
+            } else if(type === 'teacher') {
+                title.innerText = '【教師開立房間設定】';
+                let defaultRoom = 'MATH' + Math.floor(100 + Math.random() * 900);
+                content.innerHTML = `
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1">設定房間代碼</label>
+                        <input id="input-room-code" type="text" value="${defaultRoom}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-mono font-bold tracking-wider" />
+                    </div>
+                    <p class="text-xs text-slate-400">建立後將進入教師上帝視角儀表板，可統一派題並監控全班。</p>
+                `;
+            } else if(type === 'student') {
+                title.innerText = '【加入線上對戰房間】';
+                content.innerHTML = `
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">房間代碼</label>
+                            <input id="input-join-room" type="text" placeholder="例如: MATH888" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-mono uppercase font-bold" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 mb-1">您的姓名 / 座號</label>
+                            <input id="input-student-name" type="text" placeholder="例如: 802陳小明" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-bold" />
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function closeSetupModal() {
+            document.getElementById('modal-setup').classList.add('hidden');
+        }
+
+        function confirmSetup() {
+            closeSetupModal();
+            if(currentSetupType === 'solo') {
+                startSoloGame();
+            } else if(currentSetupType === 'teacher') {
+                let code = document.getElementById('input-room-code').value.trim().toUpperCase() || 'MATH888';
+                startTeacherRoom(code);
+            } else if(currentSetupType === 'student') {
+                let code = document.getElementById('input-join-room').value.trim().toUpperCase();
+                let name = document.getElementById('input-student-name').value.trim();
+                if(!code || !name) {
+                    showToast("欄位不完整", "請輸入房間代碼與您的姓名！", "error");
+                    return;
+                }
+                startStudentRoom(code, name);
+            }
+        }
+
+        // ==========================================
+        // 5. 各模式啟動邏輯
+        // ==========================================
+        function startSoloGame() {
+            gameState.mode = 'solo';
+            gameState.board = generateBalancedBoard();
+            gameState.totalClicks = 0;
+            gameState.totalErrors = 0;
+            gameState.errorLogs = [];
+            gameState.isPunished = false;
+
+            document.getElementById('view-menu').classList.add('hidden');
+            document.getElementById('view-game').classList.remove('hidden');
+            document.getElementById('game-status-badge').classList.remove('hidden');
+            document.getElementById('game-status-badge').classList.add('flex');
+            document.getElementById('current-mode-label').innerText = '單機闖關模式';
+            document.getElementById('room-code-tag').innerText = '單機模式';
+            document.getElementById('pass-btn-container').classList.remove('hidden');
+
+            nextSoloRoundTask();
+            renderBoard();
+        }
+
+        function startTeacherRoom(roomCode) {
+            gameState.mode = 'teacher';
+            gameState.roomCode = roomCode;
+            teacherRoomData.students = {};
+
+            setupBroadcastChannel(roomCode);
+
+            document.getElementById('view-menu').classList.add('hidden');
+            document.getElementById('view-teacher-dashboard').classList.remove('hidden');
+            document.getElementById('game-status-badge').classList.remove('hidden');
+            document.getElementById('game-status-badge').classList.add('flex');
+            document.getElementById('current-mode-label').innerText = `教師上帝視角 (${roomCode})`;
+            document.getElementById('dash-room-code').innerText = roomCode;
+
+            updateTeacherDashboardUI();
+        }
+
+        let studentClientId = 'user_' + Math.random().toString(36).substring(2, 9);
+
+        function startStudentRoom(roomCode, studentName) {
+            gameState.mode = 'student';
+            gameState.roomCode = roomCode;
+            gameState.playerName = studentName;
+            gameState.board = generateBalancedBoard();
+            gameState.totalClicks = 0;
+            gameState.totalErrors = 0;
+            gameState.errorLogs = [];
+            gameState.isPunished = false;
+
+            setupBroadcastChannel(roomCode);
+
+            document.getElementById('view-menu').classList.add('hidden');
+            document.getElementById('view-game').classList.remove('hidden');
+            document.getElementById('game-status-badge').classList.remove('hidden');
+            document.getElementById('game-status-badge').classList.add('flex');
+            document.getElementById('current-mode-label').innerText = `線上對戰：${studentName}`;
+            document.getElementById('player-board-title').innerText = `${studentName} 的賓果盤`;
+            document.getElementById('room-code-tag').innerText = `房間: ${roomCode}`;
+            document.getElementById('pass-btn-container').classList.remove('hidden');
+
+            document.getElementById('target-rule-title').innerText = '等待老師派題中...';
+            document.getElementById('target-rule-desc').innerText = `房間 ${roomCode} 連線成功，請隨時準備搶答！`;
+
+            renderBoard();
+            syncStudentStateToTeacher();
+        }
+
+        function teacherBroadcastNewTask() {
+            let validRules = TARGET_RULES;
+            let rand = Math.floor(Math.random() * validRules.length);
+            teacherCurrentRule = validRules[rand];
+
+            document.getElementById('dash-current-task').innerText = `【${teacherCurrentRule.name}】 - ${teacherCurrentRule.desc}`;
+
+            if(activeChannel) {
+                activeChannel.postMessage({
+                    type: 'NEW_TASK',
+                    rule: teacherCurrentRule
+                });
+            }
+            showToast("派題成功", `已成功廣播新考題：${teacherCurrentRule.name}`, "success");
+        }
+
+        function endTeacherRoom() {
+            if(activeChannel) {
+                activeChannel.postMessage({ type: 'ROOM_CLOSED' });
+            }
+            returnToMenu();
+        }
+
+        function updateTeacherDashboardUI() {
+            let studentsArr = Object.values(teacherRoomData.students);
+            document.getElementById('dash-student-count').innerText = studentsArr.length;
+
+            let matrix = document.getElementById('teacher-students-matrix');
+            matrix.innerHTML = '';
+
+            if(studentsArr.length === 0) {
+                matrix.innerHTML = `
+                    <div class="col-span-full py-12 text-center text-slate-500 glass-panel rounded-2xl">
+                        <i class="fa-solid fa-users-slash text-3xl mb-2"></i>
+                        <p>目前尚無學生加入房間（請開啟另一個瀏覽器分頁或視窗模擬學生加入代碼：${gameState.roomCode}）</p>
+                    </div>
+                `;
+                return;
+            }
+
+            studentsArr.forEach(st => {
+                let card = document.createElement('div');
+                card.className = `glass-panel rounded-2xl p-4 border ${st.isPunished ? 'border-red-500/80 penalty-active' : 'border-purple-500/30'} flex flex-col gap-3`;
+                
+                // 產生學生迷你 5x5 縮圖
+                let miniGridHtml = '<div class="grid grid-cols-5 gap-1 w-full aspect-square bg-slate-950/60 p-1.5 rounded-xl border border-slate-800">';
+                st.board.forEach(row => {
+                    row.forEach(cell => {
+                        let bgClass = cell.marked ? 'bg-emerald-500/40 text-emerald-200 border-emerald-500/50' : 'bg-slate-800/80 text-slate-300 border-slate-700';
+                        miniGridHtml += `<div class="rounded text-[9px] font-black flex items-center justify-center border ${bgClass}">${cell.value}</div>`;
+                    });
+                });
+                miniGridHtml += '</div>';
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-white text-sm">${st.name}</span>
+                        <span class="text-xs bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded border border-purple-500/40 font-bold">${st.lines} 條線</span>
+                    </div>
+                    ${miniGridHtml}
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                        <span>錯題數: <strong class="text-red-400">${st.errorsCount}</strong></span>
+                        <span>狀態: <strong class="${st.isPunished ? 'text-red-400' : 'text-emerald-400'}">${st.isPunished ? '🔴 懲罰停權' : '🟢 正常作答'}</strong></span>
+                    </div>
+                `;
+                matrix.appendChild(card);
+            });
+        }
+
+        // ==========================================
+        // 9. 錯誤日誌與賽後檢討報告
+        // ==========================================
+        function addErrorLog(number, ruleName, reason) {
+            gameState.errorLogs.push({ number, ruleName, reason });
+            let list = document.getElementById('error-feed-list');
+            if(gameState.errorLogs.length === 1) list.innerHTML = '';
+
+            let item = document.createElement('div');
+            item.className = 'p-2 rounded-lg bg-red-950/40 border border-red-500/30 text-red-300 flex items-start gap-2';
+            item.innerHTML = `<i class="fa-solid fa-circle-xmark mt-0.5 text-red-400"></i><div><b>誤選 ${number}</b> (${ruleName}): ${reason}</div>`;
+            list.prepend(item);
+        }
+
+        function triggerVictory() {
+            confetti({
+                particleCount: 120,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            document.getElementById('stat-total-clicks').innerText = gameState.totalClicks;
+            document.getElementById('stat-total-errors').innerText = gameState.totalErrors;
+            document.getElementById('stat-total-lines').innerText = `${calculateBingoLines()} 條`;
+
+            let container = document.getElementById('error-review-container');
+            container.innerHTML = '';
+
+            if(gameState.errorLogs.length === 0) {
+                container.innerHTML = `<div class="text-emerald-400 text-xs text-center py-2"><i class="fa-solid fa-award mr-1"></i> 太神啦！零失誤完美通關，對因倍數與質數判別法掌握度滿分！</div>`;
+            } else {
+                gameState.errorLogs.forEach((err, idx) => {
+                    let div = document.createElement('div');
+                    div.className = 'p-3 rounded-xl bg-slate-800/80 border border-slate-700 text-xs space-y-1';
+                    div.innerHTML = `
+                        <div class="flex items-center justify-between text-red-300 font-bold">
+                            <span><i class="fa-solid fa-triangle-exclamation mr-1"></i> 錯題 #${idx+1}: 數字 ${err.number}</span>
+                            <span class="text-slate-400">條件：${err.ruleName}</span>
+                        </div>
+                        <div class="text-slate-300">${err.reason}</div>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            document.getElementById('view-review').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            document.getElementById('view-review').classList.add('hidden');
+            if(gameState.mode === 'solo') {
+                startSoloGame();
+            } else if(gameState.mode === 'student') {
+                startStudentRoom(gameState.roomCode, gameState.playerName);
+            }
+        }
+
+        function showToast(title, msg, type) {
+            let toast = document.getElementById('custom-toast');
+            document.getElementById('toast-title').innerText = title;
+            document.getElementById('toast-msg').innerText = msg;
+            
+            toast.classList.remove('hidden', 'translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-0', 'opacity-100');
+            }, 10);
+
+            setTimeout(() => {
+                hideToast();
+            }, 4000);
+        }
+
+        function hideToast() {
+            let toast = document.getElementById('custom-toast');
+            toast.classList.add('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 300);
+        }
+    </script>
+</body>
+</html>
+```
+^^^
